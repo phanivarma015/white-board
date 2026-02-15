@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whiteboard Room</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f4f6f8;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #1f2937;
+  color: white;
+  flex-wrap: wrap;
+}
+
+.toolbar button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-clear { background: #ef4444; color: white; }
+.btn-undo { background: #3b82f6; color: white; }
+.btn-redo { background: #8b5cf6; color: white; }
+
+.canvas-container { flex: 1; }
+
+canvas {
+  background: white;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+</style>
+</head>
+
+<body>
+
+<div class="toolbar">
+  <span>Room: {{ room_name }}</span>
+
+  <label>Color:</label>
+  <input type="color" id="colorPicker" value="#000000" />
+
+  <label>Brush:</label>
+  <input type="range" id="brushSize" min="1" max="50" value="5" />
+
+  <button class="btn-undo" id="undoBtn">Undo</button>
+  <button class="btn-redo" id="redoBtn">Redo</button>
+  <button class="btn-clear" id="clearBtn">Clear</button>
+</div>
+
+<div class="canvas-container">
+  <canvas id="canvas"></canvas>
+</div>
+
+<script>
+const roomName = "{{ room_name }}";
+const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+
+const socket = new WebSocket(
+  protocol + window.location.host + "/ws/whiteboard/" + roomName + "/"
+);
+
+socket.onopen = () => console.log("Whiteboard connected ✅");
+socket.onerror = (e) => console.error("Socket error ❌", e);
+
+socket.onmessage = function(e) {
+  const data = JSON.parse(e.data);
+
+  if (data.type === "draw") {
+    drawStroke(data.stroke);
+  }
+
+  if (data.type === "clear") {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+};
+
+/* ---------------- CANVAS ---------------- */
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resizeCanvas() {
+  canvas.width = canvas.parentElement.clientWidth;
+  canvas.height = canvas.parentElement.clientHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+const colorPicker = document.getElementById("colorPicker");
+const brushSize = document.getElementById("brushSize");
+
+let drawing = false;
+let currentStroke = null;
+
+canvas.addEventListener("mousedown", (e) => {
+  drawing = true;
+  currentStroke = {
+    color: colorPicker.value,
+    width: brushSize.value,
+    points: [{ x: e.offsetX, y: e.offsetY }]
+  };
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (!drawing) return;
+
+  const point = { x: e.offsetX, y: e.offsetY };
+  currentStroke.points.push(point);
+
+  drawStrokeSegment(currentStroke);
+
+  socket.send(JSON.stringify({
+    type: "draw",
+    stroke: currentStroke
+  }));
+});
+
+canvas.addEventListener("mouseup", () => {
+  drawing = false;
+});
+
+/* ---------------- DRAWING LOGIC ---------------- */
+
+function drawStroke(stroke) {
+  ctx.strokeStyle = stroke.color;
+  ctx.lineWidth = stroke.width;
+  ctx.lineCap = "round";
+
+  ctx.beginPath();
+  ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+
+  stroke.points.forEach(p => ctx.lineTo(p.x, p.y));
+
+  ctx.stroke();
+}
+
+function drawStrokeSegment(stroke) {
+  const points = stroke.points;
+  if (points.length < 2) return;
+
+  ctx.strokeStyle = stroke.color;
+  ctx.lineWidth = stroke.width;
+  ctx.lineCap = "round";
+
+  ctx.beginPath();
+  ctx.moveTo(points[points.length - 2].x, points[points.length - 2].y);
+  ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+  ctx.stroke();
+}
+
+/* ---------------- CLEAR ---------------- */
+
+document.getElementById("clearBtn").addEventListener("click", () => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  socket.send(JSON.stringify({
+    type: "clear"
+  }));
+});
+
+/* ---------------- UNDO REDO (LOCAL ONLY) ---------------- */
+
+document.getElementById("undoBtn").addEventListener("click", () => {
+  alert("Undo is disabled in real-time mode for stability.");
+});
+
+document.getElementById("redoBtn").addEventListener("click", () => {
+  alert("Redo is disabled in real-time mode for stability.");
+});
+</script>
+
+</body>
+</html>
