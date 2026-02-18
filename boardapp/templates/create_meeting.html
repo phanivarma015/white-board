@@ -45,6 +45,7 @@ canvas {
   width: 100%;
   height: 100%;
   cursor: crosshair;
+  touch-action: none;
 }
 </style>
 </head>
@@ -69,29 +70,46 @@ canvas {
 
 <script>
 const roomName = "{{ room_name }}";
-const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
 
-const socket = new WebSocket(
-  protocol + window.location.host + "/ws/whiteboard/" + roomName + "/"
-);
+/* ================= WebSocket Setup ================= */
 
-socket.onopen = () => console.log("Whiteboard connected ✅");
-socket.onerror = (e) => console.error("Socket error ❌", e);
+const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+const socketUrl = `${protocol}://${window.location.host}/ws/whiteboard/${roomName}/`;
 
-// Receive messages
-socket.onmessage = function(e) {
-  const data = JSON.parse(e.data);
+let socket;
 
-  if (data.type === "draw") {
-    drawStrokeSegment(data.segment);
-  }
+function connectSocket() {
+  socket = new WebSocket(socketUrl);
 
-  if (data.type === "clear") {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-};
+  socket.onopen = () => {
+    console.log("Whiteboard connected ✅");
+  };
 
-/* ---------------- CANVAS ---------------- */
+  socket.onerror = (e) => {
+    console.error("Socket error ❌", e);
+  };
+
+  socket.onclose = () => {
+    console.log("Socket closed. Reconnecting in 2s...");
+    setTimeout(connectSocket, 2000);
+  };
+
+  socket.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+
+    if (data.type === "draw") {
+      drawStrokeSegment(data.segment);
+    }
+
+    if (data.type === "clear") {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  };
+}
+
+connectSocket();
+
+/* ================= Canvas Setup ================= */
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -100,6 +118,7 @@ function resizeCanvas() {
   canvas.width = canvas.parentElement.clientWidth;
   canvas.height = canvas.parentElement.clientHeight;
 }
+
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
@@ -109,43 +128,65 @@ const brushSize = document.getElementById("brushSize");
 let drawing = false;
 let lastPoint = null;
 
+/* ================= Mouse Events ================= */
+
 canvas.addEventListener("mousedown", (e) => {
   drawing = true;
-  lastPoint = { x: e.offsetX, y: e.offsetY };
+  lastPoint = getPosition(e);
 });
 
 canvas.addEventListener("mousemove", (e) => {
   if (!drawing) return;
+  handleDraw(getPosition(e));
+});
 
-  const newPoint = { x: e.offsetX, y: e.offsetY };
+canvas.addEventListener("mouseup", () => drawing = false);
+canvas.addEventListener("mouseleave", () => drawing = false);
 
+/* ================= Touch Support (Mobile) ================= */
+
+canvas.addEventListener("touchstart", (e) => {
+  e.preventDefault();
+  drawing = true;
+  lastPoint = getPosition(e.touches[0]);
+});
+
+canvas.addEventListener("touchmove", (e) => {
+  e.preventDefault();
+  if (!drawing) return;
+  handleDraw(getPosition(e.touches[0]));
+});
+
+canvas.addEventListener("touchend", () => drawing = false);
+
+/* ================= Drawing Logic ================= */
+
+function getPosition(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+}
+
+function handleDraw(newPoint) {
   const segment = {
     color: colorPicker.value,
     width: brushSize.value,
     points: [lastPoint, newPoint]
   };
 
-  // Draw locally
   drawStrokeSegment(segment);
 
-  // Send only segment
-  socket.send(JSON.stringify({
-    type: "draw",
-    segment: segment
-  }));
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "draw",
+      segment: segment
+    }));
+  }
 
   lastPoint = newPoint;
-});
-
-canvas.addEventListener("mouseup", () => {
-  drawing = false;
-});
-
-canvas.addEventListener("mouseleave", () => {
-  drawing = false;
-});
-
-/* ---------------- DRAW SEGMENT ---------------- */
+}
 
 function drawStrokeSegment(segment) {
   const points = segment.points;
@@ -161,14 +202,14 @@ function drawStrokeSegment(segment) {
   ctx.stroke();
 }
 
-/* ---------------- CLEAR ---------------- */
+/* ================= Clear ================= */
 
 document.getElementById("clearBtn").addEventListener("click", () => {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  socket.send(JSON.stringify({
-    type: "clear"
-  }));
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "clear" }));
+  }
 });
 </script>
 
