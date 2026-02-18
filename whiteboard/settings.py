@@ -15,7 +15,8 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-secret-key")
 
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")
+ALLOWED_HOSTS = ["board-meet-y0fe.onrender.com"]
+
 
 
 # Application definition
