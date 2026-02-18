@@ -15,7 +15,12 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "unsafe-secret-key")
 
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = ["board-meet-y0fe.onrender.com"]
+ALLOWED_HOSTS = [
+    "board-meet-y0fe.onrender.com",
+    "localhost",
+    "127.0.0.1",
+]
+
 
 
 
