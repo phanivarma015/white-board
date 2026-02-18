@@ -24,19 +24,22 @@ class WhiteboardConsumer(AsyncWebsocketConsumer):
         )
 
     async def receive(self, text_data):
+        data = json.loads(text_data)
+
+        # Broadcast draw or clear to entire group
         await self.channel_layer.group_send(
             self.room_group_name,
             {
                 "type": "whiteboard_message",
-                "message": text_data
+                "data": data
             }
         )
 
     async def whiteboard_message(self, event):
-        await self.send(text_data=event["message"])
+        await self.send(text_data=json.dumps(event["data"]))
 
 
-# 🔥 NEW: Notification Consumer
+# Notification Consumer (No Change Needed)
 class NotificationConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
